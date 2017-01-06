@@ -4,7 +4,7 @@
 import ete3
 import argparse
 import re
-import functools
+import copy
 
 
 
@@ -30,6 +30,8 @@ def is_valid_format(line):
 
 class CAFE_fig():
     def __init__(self, report_cafe, families, clades, dump):
+        if dump:
+            raise NotImplementedError('--dump is not implemented yet!')
         self.graphics_options = {
             '+': '#4dac26',  # expansion
             '=': '#d3d3d3',  # unchanged (remain)
@@ -41,16 +43,6 @@ class CAFE_fig():
         self.alpha = 0.05  # p-value cutoff
         self.report_path = report_cafe
         self.parse_tree()
-        for node in self.tree.traverse():
-            print('----------------')
-            print('name', node.name)
-            print('id', node.id)
-            print('lambda', node.lambda_group)
-            if not node.is_root():
-                print('avg_expansion', node.avg_expansion)
-                print('expansion', node.expansion)
-                print('remain', node.remain)
-                print('decrease', node.decrease)
         if families:
             self.families_of_interest = set(families)
         if clades:
@@ -230,7 +222,7 @@ class CAFE_fig():
             node.set_style(nstyle)
             return
         
-        t = self.tree
+        t = family.tree
         ts = ete3.TreeStyle()
         ts.layout_fn = fam_size_layout
         header = 'Evolution of the gene family "{}" (p={})'.format(
@@ -259,10 +251,10 @@ class Family():
     def get_tree_with_famsizes(self):
         self.fam_sizes = []
         size_tree = ete3.Tree(self.nwk_famsize_str)
-        phylo_tree = self.c.tree
+        self.tree = copy.deepcopy(self.c.tree)
         # parse family sizes:
         for node, size_tree_node in zip(
-            phylo_tree.traverse(),
+            self.tree.traverse(),
             size_tree.traverse()
         ):
             if size_tree_node.is_leaf():
@@ -273,7 +265,7 @@ class Family():
         # parse family pvalues:
         node_pvalues = re.findall(r'[\d\.]+|-', self.branch_pvalue_str)
         for node_id, node_size in zip(self.c.cafe_node_id_order, node_pvalues):
-            nodes = self.c.tree.search_nodes(id=node_id)
+            nodes = self.tree.search_nodes(id=node_id)
             assert len(nodes) == 1
             node = nodes[0]
             if node_size == '-':
@@ -304,7 +296,7 @@ def main(report_cafe, families, clades, dump):
             continue  # skip family since it's not significant
         if hasattr(c, 'families_of_interest') and family.name not in c.families_of_interest:
             continue  # skip family since the user didn't specifically select it
-        fam_size_tree = family.get_tree_with_famsizes()
+        family.get_tree_with_famsizes()
         if hasattr(c, 'clades_of_interest'):
             clade_pvalues = {n.pvalue for n in c.clades_of_interest}
             if clade_pvalues == {'-'}:  # no p-values were estimated for this family
@@ -312,10 +304,6 @@ def main(report_cafe, families, clades, dump):
             if min(clade_pvalues) > c.alpha:
                 continue
         c.show_fam_size_tree(family)
-        exit('bye')
-
-
-
 
 
 
