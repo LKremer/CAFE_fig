@@ -7,8 +7,6 @@ import re
 import copy
 
 
-
-
 def is_valid_format(line):
     # check if a text line is in the valid format to denote a CAFE family
     values = line.strip().split('\t')
@@ -28,26 +26,46 @@ def is_valid_format(line):
     return True
 
 
+def get_pvalue_asterisks(node):
+    try:
+        p = float(node.pvalue)
+    except (TypeError, AttributeError):
+        # TypeError occurs when CAFE did not compute the pvalue because the whole
+        # family did not experience significant size changes (p = None).
+        # AttributeError occurs when the node has no pvalue attribute (e.g.
+        # because it is the root node of the tree).
+        return ''
+    if p <= 0.001:
+        return '***'
+    if p <= 0.01:
+        return '**'
+    elif p <= 0.05:
+        return '*'
+    else:
+        return ''
+
+
 class CAFE_fig():
-    def __init__(self, report_cafe, families, clades, dump):
+    def __init__(self, report_cafe, families, clades, alpha_error, dump):
         if dump:
             raise NotImplementedError('--dump is not implemented yet!')
         self.graphics_options = {
             '+': '#4dac26',  # expansion
-            '=': '#d3d3d3',  # unchanged (remain)
+            '=': '#696969',  # unchanged (remain)
             '-': '#d01c8b',  # contraction (decrease)
-            'pixels_per_mya': 0.5,  # pixels per million years (tree width)
-            'opacity': 0.7,  # opacity of node circles
+            'pixels_per_mya': 1.0,  # pixels per million years (tree width)
+            'opacity': 1.0,  # opacity of node circles
             'scale': 1.0,  # size scale factor of node circles
+            'lambda_colors': ['SaddleBrown', 'DarkRed', 'SteelBlue', 'DarkGreen',
+                              'DarkOliveGreen', 'Maroon', 'MidnightBlue', 'black']
         }
-        self.alpha = 0.05  # p-value cutoff
+        self.alpha = alpha_error  # p-value cutoff
         self.report_path = report_cafe
         self.parse_tree()
         if families:
             self.families_of_interest = set(families)
         if clades:
             self.get_clades_of_interest(clades)
-
 
     def parse_tree(self):
         '''
@@ -101,12 +119,13 @@ class CAFE_fig():
         newick = line[5:].strip() + ';'
         self.tree = ete3.Tree(newick)
         return
-        
+
     def parse_lambda_tree(self, line):
         '''
         find out in which lambda group each node is and add this information
         as a node attribute.
         '''
+        self.lambda_colors = {}
         lambda_nwk = line[12:].strip() + ';'
         lambda_tree = ete3.Tree(lambda_nwk)
         for node, lambda_node in zip(
@@ -119,9 +138,10 @@ class CAFE_fig():
             else:
                 # ete3 parser calls this info "support" for internal nodes
                 node.lambda_group = int(lambda_node.support)
-            assert node.lambda_group
+            if node.lambda_group not in self.lambda_colors:
+                self.lambda_colors[node.lambda_group] = \
+                    self.graphics_options['lambda_colors'].pop()
         return
-
 
     def parse_node_num_tree(self, line):
         '''
@@ -140,10 +160,9 @@ class CAFE_fig():
                 node.id = int(num_node.support)
         return
 
-
     def summary_tree(self):
         '''
-        show a tree that visualizes the total number of expansions and 
+        show a tree that visualizes the total number of expansions and
         contractions across the whole phylogeny for allgene families.
         '''
         def fam_size_piechart_layout(node):
@@ -158,11 +177,20 @@ class CAFE_fig():
                     (node.remain / n_families) * 100,
                     (node.decrease / n_families) * 100,
                 ]
-                colors = [self.graphics_options['+'], self.graphics_options['='], self.graphics_options['-']]
+                colors = [self.graphics_options['+'],
+                          self.graphics_options['='],
+                          self.graphics_options['-']]
                 diameter = 13 * (1 + node.avg_expansion) * self.graphics_options['scale']
                 piechart = ete3.PieChartFace(percentages, diameter, diameter, colors)
                 piechart.opacity = self.graphics_options['opacity']
-                ete3.faces.add_face_to_node(piechart, node, 0, position='float')
+                ete3.faces.add_face_to_node(piechart, node, 10, position='float')
+                if hasattr(self, 'lambda_colors'):
+                    lambda_txt = ete3.TextFace(
+                        str(node.lambda_group) + ' ',
+                        fsize=6,
+                        fgcolor=self.lambda_colors[node.lambda_group]
+                    )
+                    ete3.faces.add_face_to_node(lambda_txt, node, 1, position='float')
             nstyle = ete3.NodeStyle()
             nstyle['size'] = 0
             node.set_style(nstyle)
@@ -176,31 +204,28 @@ class CAFE_fig():
         ts.layout_fn = fam_size_piechart_layout
         t.show(tree_style=ts)
 
-
     def get_clades_of_interest(self, clades_of_interest):
         '''
         parses the user-specified "--clades" parameter
         '''
-        self.clades_of_interest = {}
+        self.clades_of_interest = set()
         for c in clades_of_interest:
             name, species_str = c.split('=')
-            species = self.tree.species_str.split(',')
+            species = species_str.split(',')
             if len(species) == 1:
                 node = self.tree.search_nodes(name=species[0])
             elif len(species) > 1:
                 node = self.tree.get_common_ancestor(species)
             else:
                 raise Exception('invalid --clades param')
-            self.clades_of_interest.add(node)
+            self.clades_of_interest.add(node.id)
         return
-
 
     def __iter__(self):
         with open(self.report_path, 'r') as report:
             for line in report:
                 if is_valid_format(line):
                     yield Family(line, self)
-
 
     def show_fam_size_tree(self, family):
         def fam_size_layout(node):
@@ -216,12 +241,19 @@ class CAFE_fig():
             )
             cf.opacity = self.graphics_options['opacity']
             node.add_face(cf, column=10, position='float')
+            # add the family size number and asterisks to the figure
+            famsize_str = '{}{}\n'.format(
+                get_pvalue_asterisks(node),
+                node.fam_size,
+            )
+            tf = ete3.TextFace(famsize_str, fsize=4, fgcolor=node_color)
+            node.add_face(tf, column=1, position='float')
             # remove the silly default blue node dot
             nstyle = ete3.NodeStyle()
             nstyle['size'] = 0
             node.set_style(nstyle)
             return
-        
+
         t = family.tree
         ts = ete3.TreeStyle()
         ts.layout_fn = fam_size_layout
@@ -234,9 +266,6 @@ class CAFE_fig():
         t.show(tree_style=ts)
 
 
-
-
-
 class Family():
     def __init__(self, txtline, cafe_fig_instance):
         values = txtline.strip().split()
@@ -246,7 +275,6 @@ class Family():
         self.branch_pvalue_str = values[3]
         self.c = cafe_fig_instance
         return
-
 
     def get_tree_with_famsizes(self):
         self.fam_sizes = []
@@ -282,29 +310,33 @@ class Family():
         return
 
 
-
-def main(report_cafe, families, clades, dump):
+def main(report_cafe, families, clades, alpha_error, dump):
     # parse initial information (phylogeny and CAFE output formats)
-    c = CAFE_fig(report_cafe, families, clades, dump)
+    c = CAFE_fig(report_cafe, families, clades, alpha_error, dump)
 
-    # show a tree that shows how many total expansions/contractions 
+    # show a tree that shows how many total expansions/contractions
     # occured at each node
     c.summary_tree()
 
+    # show a tree for each gene family, unless the user specified a filter
+    # rule (specific families, or families that changed in a specific clade)
     for family in c:
-        if family.pvalue > c.alpha:
-            continue  # skip family since it's not significant
-        if hasattr(c, 'families_of_interest') and family.name not in c.families_of_interest:
-            continue  # skip family since the user didn't specifically select it
-        family.get_tree_with_famsizes()
-        if hasattr(c, 'clades_of_interest'):
-            clade_pvalues = {n.pvalue for n in c.clades_of_interest}
-            if clade_pvalues == {'-'}:  # no p-values were estimated for this family
-                continue
-            if min(clade_pvalues) > c.alpha:
-                continue
+        if hasattr(c, 'families_of_interest'):
+            if family.name not in c.families_of_interest:
+                continue  # skip family since the user didn't specifically select it
+            family.get_tree_with_famsizes()  # prepare to plot
+        else:
+            if family.pvalue > c.alpha:
+                continue  # skip family since it's not significant
+            family.get_tree_with_famsizes()
+            if hasattr(c, 'clades_of_interest'):
+                for node_id in c.clades_of_interest:
+                    p_value = family.tree.search_nodes(id=node_id)[0].pvalue
+                    if p_value <= c.alpha:
+                        break
+                else:  # loop wasnt broken = no significant event found
+                    continue
         c.show_fam_size_tree(family)
-
 
 
 if __name__ == '__main__':
@@ -318,12 +350,12 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--clades', help='only show families that are '
                         'expanded/contracted at this clade, e.g.: Isoptera=zne'
                         ',mna', nargs='+')
+    parser.add_argument('-a', '--alpha_error', help='p-value cutoff (default: 0.05)',
+                        default=0.05, type=float)
     parser.add_argument('-d', '--dump', action='store_true',
                         help='don\'t open trees in a window, write PDF files instead')
-    #parser.add_argument('-a', '--functional_annotation', help='a TSV file that '
-                        #'contains a functional annotation of orthology clusters. '
-                        #'generated with link_orthoclusters_to_domains.py (optional)')
-    #parser.add_argument('-r', '--write_report', help='write a LaTeX report to the '
-                        #'specified directory', default=False)
     args = parser.parse_args()
+    if args.families:
+        if args.clades:
+            print('\n########\nWarning! "--families" overrides "--clades".\n########\n')
     main(**vars(args))
