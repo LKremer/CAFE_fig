@@ -4,6 +4,8 @@
 import ete3
 import argparse
 import re
+import os
+import shutil
 import copy
 
 
@@ -46,9 +48,7 @@ def get_pvalue_asterisks(node):
 
 
 class CAFE_fig():
-    def __init__(self, report_cafe, families, clades, alpha_error, dump):
-        if dump:
-            raise NotImplementedError('--dump is not implemented yet!')
+    def __init__(self, report_cafe, families, clades, alpha_error, dump, gfx_output_format):
         self.graphics_options = {
             '+': '#4dac26',  # expansion
             '=': '#696969',  # unchanged (remain)
@@ -61,11 +61,39 @@ class CAFE_fig():
         }
         self.alpha = alpha_error  # p-value cutoff
         self.report_path = report_cafe
+        self.prepare_pdf_dump(dump, gfx_format=gfx_output_format)
         self.parse_tree()
         if families:
             self.families_of_interest = set(families)
         if clades:
             self.get_clades_of_interest(clades)
+
+    def prepare_pdf_dump(self, dir_path, gfx_format='pdf'):
+        '''
+        create a directory to dump the figures (trees) to.
+        '''
+        self.gfx_format = '.' + gfx_format.lstrip('.')
+        if self.gfx_format not in ('.svg', '.pdf', '.png'):
+            raise Exception('graphics output format must be one of [svg|pdf|png]')
+        if dir_path:
+            if os.path.isdir(dir_path):
+                answer = ''
+                while answer.lower() not in ('y', 'n', 'yes', 'no'):
+                    answer = input('The directory "{}" already exists. Overwrite it '
+                        'and delete all its contents? (y/n)? '.format(dir_path))
+                if answer.lower() in ('n', 'no'):
+                    exit('bye!')
+                else:
+                    shutil.rmtree(dir_path)
+            os.mkdir(dir_path)
+            self.out_dir = os.path.abspath(dir_path)
+            fam_dir = os.path.join(dir_path, 'families')
+            os.mkdir(fam_dir)
+            self.out_dir_families = os.path.abspath(fam_dir)
+            self.dump = True
+        else:
+            self.dump = False
+        return        
 
     def parse_tree(self):
         '''
@@ -73,6 +101,8 @@ class CAFE_fig():
         phylogeny, the output format/node order and the average expansion
         of all nodes.
         '''
+        self.multi_lambda = False  # boolean that indicates whether the user ran CAFE
+        # with one lambda or multiple lambda values, will be toggled if lambas found
         with open(self.report_path, 'r') as report:
             for line in report:
                 if line.startswith('Tree:'):
@@ -81,6 +111,7 @@ class CAFE_fig():
                 if line.startswith('Lambda tree:'):
                     # add the information of the lambda groups to the tree
                     self.parse_lambda_tree(line)
+                    self.multi_lambda = True  # user ran CAFE with more than one lambda
                 if line.startswith('# IDs of nodes:'):
                     # add CAFE's numerical ID's to the tree
                     self.parse_node_num_tree(line)
@@ -183,26 +214,50 @@ class CAFE_fig():
                 diameter = 13 * (1 + node.avg_expansion) * self.graphics_options['scale']
                 piechart = ete3.PieChartFace(percentages, diameter, diameter, colors)
                 piechart.opacity = self.graphics_options['opacity']
-                ete3.faces.add_face_to_node(piechart, node, 10, position='float')
-                if hasattr(self, 'lambda_colors'):
-                    lambda_txt = ete3.TextFace(
-                        str(node.lambda_group) + ' ',
-                        fsize=6,
-                        fgcolor=self.lambda_colors[node.lambda_group]
-                    )
-                    ete3.faces.add_face_to_node(lambda_txt, node, 1, position='float')
+                ete3.faces.add_face_to_node(piechart, node, 9, position='float')
             nstyle = ete3.NodeStyle()
             nstyle['size'] = 0
             node.set_style(nstyle)
             return
-
         t = self.tree
         ts = ete3.TreeStyle()
         header = 'frequency of expansions and contractions across the phylogeny'
         ts.title.add_face(ete3.TextFace(header, fsize=8), column=0)
         ts.scale = self.graphics_options['pixels_per_mya']  # pixels per million years
         ts.layout_fn = fam_size_piechart_layout
-        t.show(tree_style=ts)
+        self.show_or_dump_tree(tree_obj=t, tree_style=ts, fname='summary')
+        return
+
+    def lambda_tree(self):
+        '''
+        show a tree that visualizes which nodes evolved under which lambda.
+        '''
+        def lambda_node_layout(node):
+            circle = ete3.CircleFace(radius=3,
+                                     color=self.lambda_colors[node.lambda_group])
+            circle.opacity = self.graphics_options['opacity']
+            lambda_txt = ete3.TextFace(
+                str(node.lambda_group) + ' ',
+                fsize=6,
+                fgcolor=self.lambda_colors[node.lambda_group]
+            )
+            dummy = ete3.TextFace(' ', fsize=6)  # for formatting purposes
+            lambda_txt.opacity = self.graphics_options['opacity']
+            ete3.faces.add_face_to_node(lambda_txt, node, 1, position='float')
+            ete3.faces.add_face_to_node(circle, node, 2, position='float')
+            ete3.faces.add_face_to_node(dummy, node, 1, position='float')
+            nstyle = ete3.NodeStyle()
+            nstyle['size'] = 0
+            node.set_style(nstyle)
+            return
+        t = self.tree
+        ts = ete3.TreeStyle()
+        header = '{} lambda parameters were used'.format(len(self.lambda_colors))
+        ts.title.add_face(ete3.TextFace(header, fsize=8), column=10)
+        ts.scale = self.graphics_options['pixels_per_mya']  # pixels per million years
+        ts.layout_fn = lambda_node_layout
+        self.show_or_dump_tree(tree_obj=t, tree_style=ts, fname='lambda_groups')
+        return
 
     def get_clades_of_interest(self, clades_of_interest):
         '''
@@ -263,8 +318,25 @@ class CAFE_fig():
         )
         ts.title.add_face(ete3.TextFace(header, fsize=8), column=0)
         ts.scale = self.graphics_options['pixels_per_mya']  # pixels per million years
-        t.show(tree_style=ts)
+        self.show_or_dump_tree(tree_obj=t, tree_style=ts,
+                               fname=family.name, is_family=True)
+        return
 
+    def show_or_dump_tree(self, tree_obj, tree_style, fname, is_family=False):
+        '''
+        show the tree in a window, or write it to a PDF file if the user used --dump
+        '''
+        if self.dump:
+            if is_family:
+                out_dir = self.out_dir_families
+            else:
+                out_dir = self.out_dir
+            out_path = os.path.join(out_dir, fname + self.gfx_format)
+            print('Writing', os.path.relpath(out_path))
+            tree_obj.render(out_path, tree_style=tree_style)
+        else:
+            tree_obj.show(tree_style=tree_style)
+        return
 
 class Family():
     def __init__(self, txtline, cafe_fig_instance):
@@ -310,9 +382,13 @@ class Family():
         return
 
 
-def main(report_cafe, families, clades, alpha_error, dump):
+def main(report_cafe, families, clades, alpha_error, dump, gfx_output_format):
     # parse initial information (phylogeny and CAFE output formats)
-    c = CAFE_fig(report_cafe, families, clades, alpha_error, dump)
+    c = CAFE_fig(report_cafe, families, clades, alpha_error, dump, gfx_output_format)
+
+    # show a tree that shows the lambda categories that the user chose
+    if c.multi_lambda:
+        c.lambda_tree()
 
     # show a tree that shows how many total expansions/contractions
     # occured at each node
@@ -352,8 +428,12 @@ if __name__ == '__main__':
                         ',mna', nargs='+')
     parser.add_argument('-a', '--alpha_error', help='p-value cutoff (default: 0.05)',
                         default=0.05, type=float)
-    parser.add_argument('-d', '--dump', action='store_true',
-                        help='don\'t open trees in a window, write PDF files instead')
+    parser.add_argument('-d', '--dump', help='don\'t open trees in a window, write '
+                        'them to files in the specified directory instead',
+                        default=None)
+    parser.add_argument('-g', '--gfx_output_format', default='.pdf', help='output '
+                        'format for the tree figures when using --dump [svg|pdf|png]'
+                        ' (default: pdf)')
     args = parser.parse_args()
     if args.families:
         if args.clades:
