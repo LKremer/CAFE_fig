@@ -417,20 +417,23 @@ def main(report_cafe, families, clades, alpha_error, dump, gfx_output_format):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Parses a CAFE output file (.cafe) and plots signi'
-                    'ficantly expanded/contracted families')
-    parser.add_argument('report_cafe', help='the file report.cafe (or similar'
-                        'name)')
-    parser.add_argument('-f', '--families', help='only show these families',
+        description='Parses a CAFE output file (.cafe) and plots a summary tree '
+        'that shows the average expansion/contractin across the phylogeny; a tree '
+        'that shows which clades evolved under the same lambda (if available); and '
+        'a gene family evolution tree for each user-specified gene family.')
+    parser.add_argument('report_cafe', help='the file report.cafe (or similar name)')
+    parser.add_argument('-f', '--families', help='only show families with these IDs',
                         nargs='+')
     parser.add_argument('-c', '--clades', help='only show families that are '
-                        'expanded/contracted at this clade, e.g.: Isoptera=zne'
-                        ',mna', nargs='+')
+                        'expanded/contracted at this clade. Format: [clade]='
+                        '[leaf],[leaf] where clade is the name of the last '
+                        'common ancestor of the two leaves, e.g.: Isoptera=zne,mna',
+                        nargs='+')
     parser.add_argument('-a', '--alpha_error', help='p-value cutoff (default: 0.05)',
                         default=0.05, type=float)
     parser.add_argument('-d', '--dump', help='don\'t open trees in a window, write '
-                        'them to files in the specified directory instead',
-                        default=None)
+                        'them to files in the specified directory instead (default: '
+                        'off)', default=None)
     parser.add_argument('-g', '--gfx_output_format', default='.pdf', help='output '
                         'format for the tree figures when using --dump [svg|pdf|png]'
                         ' (default: pdf)')
