@@ -14,7 +14,7 @@ Requirements
 
 CAFE_fig requires Python3.4+ and ETE3:
 
-`pip install 'ete3==3.0.0b35'`
+`pip3 install 'ete3==3.0.0b35'`
 
 
 Usage
