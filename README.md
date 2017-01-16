@@ -14,7 +14,7 @@ Requirements
 
 CAFE_fig requires Python3.4+ and ETE3:
 
-`pip install 'ete3==3.0.0b35'`
+`pip3 install 'ete3==3.0.0b35'`
 
 
 Usage
@@ -58,6 +58,6 @@ Example usage
 
 Reads "example_result.cafe" and dumps all figures in PDF format to the directory "test/". Trees will only be shown for families that showed a significant (p<=0.05) expansion/contraction at the node "Isoptera", which is the last common ancestor of "zne" and "mna".
 
-![example_tree](http://i.imgur.com/221ra0l.png)
+Significant contractions are marked in magenta, significant expansions are marked in green (p<=0.001 = \*\*\*, p<=0.01 = \*\*, p<=0.05 = \*).
 
-Significant contractions are marked in magenta, significant expansions are marked in green (p<=0.001 = ***, p<=0.01 = **, p<=0.05 = *).
+![example_tree](http://i.imgur.com/221ra0l.png)
