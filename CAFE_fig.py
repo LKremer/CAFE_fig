@@ -48,7 +48,8 @@ def get_pvalue_asterisks(node):
 
 
 class CAFE_fig():
-    def __init__(self, report_cafe, families, clades, alpha_error, dump, gfx_output_format):
+    def __init__(self, report_cafe, families, clades, alpha_error,
+                 dump, gfx_output_format):
         self.graphics_options = {
             '+': '#4dac26',  # expansion
             '=': '#696969',  # unchanged (remain)
@@ -63,10 +64,10 @@ class CAFE_fig():
         self.report_path = report_cafe
         self.prepare_pdf_dump(dump, gfx_format=gfx_output_format)
         self.parse_tree()
-        if families:
-            self.families_of_interest = set(families)
         if clades:
             self.get_clades_of_interest(clades)
+        if families:
+            self.families_of_interest = set(families)
 
     def prepare_pdf_dump(self, dir_path, gfx_format='pdf'):
         '''
@@ -80,7 +81,8 @@ class CAFE_fig():
                 answer = ''
                 while answer.lower() not in ('y', 'n', 'yes', 'no'):
                     answer = input('The directory "{}" already exists. Overwrite it '
-                        'and delete all its contents? (y/n)? '.format(dir_path))
+                                   'and delete all its contents? '
+                                   '(y/n)? '.format(dir_path))
                 if answer.lower() in ('n', 'no'):
                     exit('bye!')
                 else:
@@ -93,7 +95,7 @@ class CAFE_fig():
             self.dump = True
         else:
             self.dump = False
-        return        
+        return
 
     def parse_tree(self):
         '''
@@ -273,7 +275,9 @@ class CAFE_fig():
                 node = self.tree.get_common_ancestor(species)
             else:
                 raise Exception('invalid --clades param')
-            self.clades_of_interest.add(node.id)
+            self.clades_of_interest.add(
+                (name, node.id)
+            )
         return
 
     def __iter__(self):
@@ -310,6 +314,29 @@ class CAFE_fig():
             return
 
         t = family.tree
+        # write a quick summary of family name, pvalues and what happened
+        if hasattr(self, 'clades_of_interest'):
+            for clade_name, node_id in self.clades_of_interest:
+                search_results = t.search_nodes(id=node_id)
+                assert len(search_results) == 1
+                clade_node = search_results[0]
+                clade_event = getattr(clade_node, 'event', '=')
+                clade_pvalue = getattr(clade_node, 'pvalue', '')
+                tsv_header = 'family\tfamily_pvalue\tclade\tevent\tclade_pvalue'
+                tsv_line = '{}\t{}\t{}\t{}\t{}'.format(
+                    family.name, family.pvalue, clade_name, clade_event, clade_pvalue
+                )
+                if self.dump:
+                    outf_name = '{}_summary.tsv'.format(clade_name)
+                    outf_path = os.path.join(self.out_dir, outf_name)
+                    if not os.path.isfile(outf_path):
+                        with open(outf_path, 'a') as outf:
+                            outf.write(tsv_header + '\n')
+                    with open(outf_path, 'a') as outf:
+                        outf.write(tsv_line + '\n')
+                print('\n' + tsv_header)
+                print(tsv_line)
+
         ts = ete3.TreeStyle()
         ts.layout_fn = fam_size_layout
         header = 'Evolution of the gene family "{}" (p={})'.format(
@@ -332,11 +359,12 @@ class CAFE_fig():
             else:
                 out_dir = self.out_dir
             out_path = os.path.join(out_dir, fname + self.gfx_format)
-            print('Writing', os.path.relpath(out_path))
+            print('\tWriting', os.path.relpath(out_path))
             tree_obj.render(out_path, tree_style=tree_style)
         else:
             tree_obj.show(tree_style=tree_style)
         return
+
 
 class Family():
     def __init__(self, txtline, cafe_fig_instance):
@@ -406,7 +434,7 @@ def main(report_cafe, families, clades, alpha_error, dump, gfx_output_format):
                 continue  # skip family since it's not significant
             family.get_tree_with_famsizes()
             if hasattr(c, 'clades_of_interest'):
-                for node_id in c.clades_of_interest:
+                for __, node_id in c.clades_of_interest:
                     p_value = family.tree.search_nodes(id=node_id)[0].pvalue
                     if p_value <= c.alpha:
                         break
