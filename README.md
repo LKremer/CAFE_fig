@@ -1,6 +1,9 @@
 CAFE_fig, a visualization tool for CAFE.
 =========
 
+[CAFE](https://hahnlab.github.io/CAFE/) (Computational Analysis of gene Family
+Evolution) is a software that provides a statistical foundation for evolutionary
+inferences about changes in gene family size.
 CAFE_fig takes a .cafe output file and produces:
 - a summary tree that shows the average expansion/contraction of families across the phylogeny
 - a tree that denotes which branches evolve under which lambda (if available)
@@ -13,6 +16,8 @@ Requirements
 
 
 CAFE_fig requires Python3.4+ and ETE3:
+Follow the install instructions on [the ETE3 website](http://etetoolkit.org/) or
+install ETE3 with
 
 `pip3 install 'ete3==3.0.0b35'`
 
