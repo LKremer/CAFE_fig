@@ -4,9 +4,13 @@ CAFE_fig, a visualization tool for CAFE.
 [CAFE](https://hahnlab.github.io/CAFE/) (Computational Analysis of gene Family
 Evolution) is a software that provides a statistical foundation for evolutionary
 inferences about changes in gene family size.
+
+The visualization and interpretation of CAFE results usually requires custom
+scripts. Here, I provide such a custom script.
+
 CAFE_fig takes a .cafe output file and produces:
 - a summary tree that shows the average expansion/contraction of families across the phylogeny
-- a tree that denotes which branches evolve under which lambda (if available)
+- a tree that denotes which branches evolve under which lambda (if a model with multiple lambdas was used)
 - a tree for each family of interest, i.e. families that the user specified by ID or families that showed significant change at a user-specified clade of interest
 
 
