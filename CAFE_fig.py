@@ -448,7 +448,7 @@ def main(report_cafe, families, clades, pb, pf, dump, gfx_output_format):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Parses a CAFE output file (.cafe) and plots a summary tree '
-        'that shows the average expansion/contractin across the phylogeny; a tree '
+        'that shows the average expansion/contraction across the phylogeny; a tree '
         'that shows which clades evolved under the same lambda (if available); and '
         'a gene family evolution tree for each user-specified gene family.')
     parser.add_argument('report_cafe', help='the file report.cafe (or similar name)')
