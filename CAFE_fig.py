@@ -1,12 +1,22 @@
 #!/usr/bin/python3.4
 
 
+from __future__ import print_function
 import ete3
 import argparse
 import re
 import os
 import shutil
 import copy
+import math
+from base64 import b16encode
+
+
+# Python 2 compatability:
+try:
+    input = raw_input
+except NameError:
+    pass
 
 
 def is_valid_format(line):
@@ -37,18 +47,28 @@ def get_pvalue_asterisks(node):
         # AttributeError occurs when the node has no pvalue attribute (e.g.
         # because it is the root node of the tree).
         return ''
-    if p <= 0.001:
+    if p <= 0.0001:
         return '***'
-    if p <= 0.01:
+    if p <= 0.001:
         return '**'
-    elif p <= 0.05:
+    if p <= 0.01:
         return '*'
+    elif p <= 0.05:
+        return '.'
     else:
         return ''
 
+def to_rgb(v_abs, min_v, max_v):
+    v = (v_abs - min_v) / (max_v - min_v)  # scaled to a value between 0 and 1
+    red = round(255 * v)
+    blue = round(255 * (1 - v))
+    rgb_triplet = (red, 0, blue)
+    hex_color = '#' + b16encode(bytes(rgb_triplet)).decode()
+    return hex_color
+
 
 class CAFE_fig():
-    def __init__(self, report_cafe, families, clades, alpha_error,
+    def __init__(self, report_cafe, families, clades, pb, pf,
                  dump, gfx_output_format):
         self.graphics_options = {
             '+': '#4dac26',  # expansion
@@ -57,10 +77,9 @@ class CAFE_fig():
             'pixels_per_mya': 1.0,  # pixels per million years (tree width)
             'opacity': 1.0,  # opacity of node circles
             'scale': 1.0,  # size scale factor of node circles
-            'lambda_colors': ['SaddleBrown', 'DarkRed', 'SteelBlue', 'DarkGreen',
-                              'DarkOliveGreen', 'Maroon', 'MidnightBlue', 'black']
         }
-        self.alpha = alpha_error  # p-value cutoff
+        self.branch_p_cutoff = pb
+        self.family_p_cutoff = pf
         self.report_path = report_cafe
         self.prepare_pdf_dump(dump, gfx_format=gfx_output_format)
         self.parse_tree()
@@ -110,6 +129,8 @@ class CAFE_fig():
                 if line.startswith('Tree:'):
                     # parse the general phylogeny including branch lengths
                     self.parse_phylo_tree(line)
+                if line.startswith('Lambda:'):
+                    self.parse_lambdas(line)
                 if line.startswith('Lambda tree:'):
                     # add the information of the lambda groups to the tree
                     self.parse_lambda_tree(line)
@@ -153,12 +174,22 @@ class CAFE_fig():
         self.tree = ete3.Tree(newick)
         return
 
+    def parse_lambdas(self, line):
+        self.lambdas = {}
+        for i, lambda_str in enumerate(line.split()[1:]):
+            self.lambdas[i + 1] = float(lambda_str)
+        self.lambda_colors = {}
+        max_l = math.log(max(self.lambdas.values()))
+        min_l = math.log(min(self.lambdas.values()))
+        for i, lambda_ in self.lambdas.items():
+            self.lambda_colors[i] = to_rgb(math.log(lambda_), min_l, max_l)
+        return
+
     def parse_lambda_tree(self, line):
         '''
         find out in which lambda group each node is and add this information
         as a node attribute.
         '''
-        self.lambda_colors = {}
         lambda_nwk = line[12:].strip() + ';'
         lambda_tree = ete3.Tree(lambda_nwk)
         for node, lambda_node in zip(
@@ -171,9 +202,6 @@ class CAFE_fig():
             else:
                 # ete3 parser calls this info "support" for internal nodes
                 node.lambda_group = int(lambda_node.support)
-            if node.lambda_group not in self.lambda_colors:
-                self.lambda_colors[node.lambda_group] = \
-                    self.graphics_options['lambda_colors'].pop()
         return
 
     def parse_node_num_tree(self, line):
@@ -204,61 +232,37 @@ class CAFE_fig():
             can access class attributes (graphics options).
             '''
             if not node.is_root():
-                n_families = node.expansion + node.remain + node.decrease
-                percentages = [
-                    (node.expansion / n_families) * 100,
-                    (node.remain / n_families) * 100,
-                    (node.decrease / n_families) * 100,
-                ]
-                colors = [self.graphics_options['+'],
-                          self.graphics_options['='],
-                          self.graphics_options['-']]
-                diameter = 13 * (1 + node.avg_expansion) * self.graphics_options['scale']
-                piechart = ete3.PieChartFace(percentages, diameter, diameter, colors)
-                piechart.opacity = self.graphics_options['opacity']
-                ete3.faces.add_face_to_node(piechart, node, 9, position='float')
+                # add a text that shows expansions & contractions, e.g. +10/-20
+                exp_cnt_txt = ete3.TextFace(
+                    '+{}/-{}\n'.format(int(node.expansion), int(node.decrease)),
+                    fsize=6, fgcolor=self.lambda_colors[node.lambda_group]
+                )
+                pos = 'aligned' if node.is_leaf() else 'float'
+                # add a circle that shows the average expansion
+                ete3.faces.add_face_to_node(exp_cnt_txt, node, 1, position=pos)
+
+                # add average expansion info:
+                scale_factor = 1 + node.avg_expansion
+                avg_exp = '{:+}'.format(round(node.avg_expansion, 2))
+                circle = ete3.CircleFace(radius=9 * scale_factor,
+                                         color=self.lambda_colors[node.lambda_group],
+                                         label={'text': avg_exp, 'color': 'white',
+                                                'fontsize': 3 + (2.25*scale_factor)})
+                circle.opacity = self.graphics_options['opacity']
+                ete3.faces.add_face_to_node(circle, node, 2, position='float')
             nstyle = ete3.NodeStyle()
             nstyle['size'] = 0
             node.set_style(nstyle)
             return
         t = self.tree
         ts = ete3.TreeStyle()
-        header = 'frequency of expansions and contractions across the phylogeny'
+        header = ('Family expansions and contractions\nmin lambda: {} '
+                  '(blue)\nmax lambda: {} (red)').format(
+                 min(self.lambdas.values()), max(self.lambdas.values()))
         ts.title.add_face(ete3.TextFace(header, fsize=8), column=0)
         ts.scale = self.graphics_options['pixels_per_mya']  # pixels per million years
         ts.layout_fn = fam_size_piechart_layout
         self.show_or_dump_tree(tree_obj=t, tree_style=ts, fname='summary')
-        return
-
-    def lambda_tree(self):
-        '''
-        show a tree that visualizes which nodes evolved under which lambda.
-        '''
-        def lambda_node_layout(node):
-            circle = ete3.CircleFace(radius=3,
-                                     color=self.lambda_colors[node.lambda_group])
-            circle.opacity = self.graphics_options['opacity']
-            lambda_txt = ete3.TextFace(
-                str(node.lambda_group) + ' ',
-                fsize=6,
-                fgcolor=self.lambda_colors[node.lambda_group]
-            )
-            dummy = ete3.TextFace(' ', fsize=6)  # for formatting purposes
-            lambda_txt.opacity = self.graphics_options['opacity']
-            ete3.faces.add_face_to_node(lambda_txt, node, 1, position='float')
-            ete3.faces.add_face_to_node(circle, node, 2, position='float')
-            ete3.faces.add_face_to_node(dummy, node, 1, position='float')
-            nstyle = ete3.NodeStyle()
-            nstyle['size'] = 0
-            node.set_style(nstyle)
-            return
-        t = self.tree
-        ts = ete3.TreeStyle()
-        header = '{} lambda parameters were used'.format(len(self.lambda_colors))
-        ts.title.add_face(ete3.TextFace(header, fsize=8), column=10)
-        ts.scale = self.graphics_options['pixels_per_mya']  # pixels per million years
-        ts.layout_fn = lambda_node_layout
-        self.show_or_dump_tree(tree_obj=t, tree_style=ts, fname='lambda_groups')
         return
 
     def get_clades_of_interest(self, clades_of_interest):
@@ -270,7 +274,9 @@ class CAFE_fig():
             name, species_str = c.split('=')
             species = species_str.split(',')
             if len(species) == 1:
-                node = self.tree.search_nodes(name=species[0])
+                search_results = self.tree.search_nodes(name=species[0])
+                assert len(search_results) == 1
+                node = search_results[0]
             elif len(species) > 1:
                 node = self.tree.get_common_ancestor(species)
             else:
@@ -400,23 +406,19 @@ class Family():
                 node.pvalue = None
             else:
                 node.pvalue = float(node_size)
-                if node.pvalue <= self.c.alpha:
+                if node.pvalue <= self.c.branch_p_cutoff:
                     if node.fam_size > node.up.fam_size:
                         node.event = '+'
                     elif node.fam_size < node.up.fam_size:
                         node.event = '-'
-                    else:
-                        raise Exception('significant p-value, but no fam size change?')
+                    #else:
+                        #raise Exception('significant p-value, but no fam size change?')
         return
 
 
-def main(report_cafe, families, clades, alpha_error, dump, gfx_output_format):
+def main(report_cafe, families, clades, pb, pf, dump, gfx_output_format):
     # parse initial information (phylogeny and CAFE output formats)
-    c = CAFE_fig(report_cafe, families, clades, alpha_error, dump, gfx_output_format)
-
-    # show a tree that shows the lambda categories that the user chose
-    if c.multi_lambda:
-        c.lambda_tree()
+    c = CAFE_fig(report_cafe, families, clades, pb, pf, dump, gfx_output_format)
 
     # show a tree that shows how many total expansions/contractions
     # occured at each node
@@ -430,13 +432,13 @@ def main(report_cafe, families, clades, alpha_error, dump, gfx_output_format):
                 continue  # skip family since the user didn't specifically select it
             family.get_tree_with_famsizes()  # prepare to plot
         else:
-            if family.pvalue > c.alpha:
+            if family.pvalue > c.family_p_cutoff:
                 continue  # skip family since it's not significant
             family.get_tree_with_famsizes()
             if hasattr(c, 'clades_of_interest'):
                 for __, node_id in c.clades_of_interest:
                     p_value = family.tree.search_nodes(id=node_id)[0].pvalue
-                    if p_value <= c.alpha:
+                    if p_value <= c.branch_p_cutoff:
                         break
                 else:  # loop wasnt broken = no significant event found
                     continue
@@ -457,7 +459,9 @@ if __name__ == '__main__':
                         '[leaf],[leaf] where clade is the name of the last '
                         'common ancestor of the two leaves, e.g.: Isoptera=zne,mna',
                         nargs='+')
-    parser.add_argument('-a', '--alpha_error', help='p-value cutoff (default: 0.05)',
+    parser.add_argument('-pb', help='branch p-value cutoff (default: 0.05)',
+                        default=0.05, type=float)
+    parser.add_argument('-pf', help='family p-value cutoff (default: 0.05)',
                         default=0.05, type=float)
     parser.add_argument('-d', '--dump', help='don\'t open trees in a window, write '
                         'them to files in the specified directory instead (default: '
