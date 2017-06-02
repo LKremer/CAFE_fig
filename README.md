@@ -77,8 +77,8 @@ Example outputs
 Summary tree that shows the average expansion/contraction (radius of node circles),
 the numbers of expanded/contracted families (+/-), and the estimated gene gain/loss
 rates (blue: low rate; red: high rate).
-![example_tree](screenshots/expansions_contractions.pdf)
+![example_tree](screenshots/expansions_contractions.png)
 
 Example output for a specific gene family. Numbers and node sizes represent the family size at each node.
 Significant expansions are shown in green, significant contractions in magenta.
-![example_tree](screenshots/Ir_group_B.pdf)
+![example_tree](screenshots/Ir_group_B.png)
