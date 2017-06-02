@@ -31,13 +31,14 @@ Usage
 
 ```
 usage: CAFE_fig.py [-h] [-f FAMILIES [FAMILIES ...]] [-c CLADES [CLADES ...]]
-                   [-a ALPHA_ERROR] [-d DUMP] [-g GFX_OUTPUT_FORMAT]
+                   [-pb PB] [-pf PF] [-d DUMP] [-g GFX_OUTPUT_FORMAT]
                    report_cafe
 
 Parses a CAFE output file (.cafe) and plots a summary tree that shows the
-average expansion/contractin across the phylogeny; a tree that shows which
-clades evolved under the same lambda (if available); and a gene family
-evolution tree for each user-specified gene family.
+average expansion/contraction across the phylogeny, the numbers of expanded/
+contracted families, and the estimated lambda rates (rate of gene gain/loss).
+Can also plot a separate, detailed tree that shows the evolution of a single gene
+family's size for each user-specified gene family.
 
 positional arguments:
   report_cafe           the file report.cafe (or similar name)
@@ -51,8 +52,8 @@ optional arguments:
                         this clade. Format: [clade]=[leaf],[leaf] where clade
                         is the name of the last common ancestor of the two
                         leaves, e.g.: Isoptera=zne,mna
-  -a ALPHA_ERROR, --alpha_error ALPHA_ERROR
-                        p-value cutoff (default: 0.05)
+  -pb PB                branch p-value cutoff (default: 0.05)
+  -pf PF                family p-value cutoff (default: 0.05)
   -d DUMP, --dump DUMP  don't open trees in a window, write them to files in
                         the specified directory instead (default: off)
   -g GFX_OUTPUT_FORMAT, --gfx_output_format GFX_OUTPUT_FORMAT
@@ -69,4 +70,15 @@ Reads "example_result.cafe" and dumps all figures in PDF format to the directory
 
 Significant contractions are marked in magenta, significant expansions are marked in green (p<=0.001 = \*\*\*, p<=0.01 = \*\*, p<=0.05 = \*).
 
-![example_tree](http://i.imgur.com/221ra0l.png)
+
+Example outputs
+------------
+
+Summary tree that shows the average expansion/contraction (radius of node circles),
+the numbers of expanded/contracted families (+/-), and the estimated gene gain/loss
+rates (blue: low rate; red: high rate).
+![example_tree](screenshots/expansions_contractions.pdf)
+
+Example output for a specific gene family. Numbers and node sizes represent the family size at each node.
+Significant expansions are shown in green, significant contractions in magenta.
+![example_tree](screenshots/Ir_group_B.pdf)
