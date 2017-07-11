@@ -69,7 +69,7 @@ def to_rgb(v_abs, min_v, max_v):
 
 class CAFE_fig():
     def __init__(self, report_cafe, families, clades, pb, pf,
-                 dump, gfx_output_format):
+                 dump, gfx_output_format, count_all_expansions):
         self.graphics_options = {
             '+': '#4dac26',  # expansion
             '=': '#696969',  # unchanged (remain)
@@ -78,6 +78,7 @@ class CAFE_fig():
             'opacity': 1.0,  # opacity of node circles
             'scale': 1.0,  # size scale factor of node circles
         }
+        self.count_all_expansions = count_all_expansions
         self.branch_p_cutoff = pb
         self.family_p_cutoff = pf
         self.report_path = report_cafe
@@ -87,6 +88,7 @@ class CAFE_fig():
             self.get_clades_of_interest(clades)
         if families:
             self.families_of_interest = set(families)
+        return
 
     def prepare_pdf_dump(self, dir_path, gfx_format='pdf'):
         '''
@@ -122,6 +124,7 @@ class CAFE_fig():
         phylogeny, the output format/node order and the average expansion
         of all nodes.
         '''
+        print('Parsing CAFE report...', end='\r')
         self.multi_lambda = False  # boolean that indicates whether the user ran CAFE
         # with one lambda or multiple lambda values, will be toggled if lambas found
         with open(self.report_path, 'r') as report:
@@ -151,6 +154,24 @@ class CAFE_fig():
                     self.parse_fam_size_summary_tree(line, 'decrease')
                 if line.startswith('\'ID\''):
                     break  # end of header lines
+
+        # count the number of significant expansions
+        # and significant contractions per node:
+        for family in self:
+            if family.pvalue > self.family_p_cutoff:
+                continue  # insignificant family
+            family.get_tree_with_famsizes()
+            for node, fam_tree_node in zip(
+                self.tree.traverse(),
+                family.tree.traverse()
+            ):
+                if not fam_tree_node.event:
+                    continue
+                if fam_tree_node.event == '+':
+                    node.sig_expansions += 1
+                elif fam_tree_node.event == '-':
+                    node.sig_contractions += 1
+        print('Parsing CAFE report... done!')
         return
 
     def parse_fam_size_summary_tree(self, line, node_attr_name):
@@ -172,6 +193,9 @@ class CAFE_fig():
         '''
         newick = line[5:].strip() + ';'
         self.tree = ete3.Tree(newick)
+        for node in self.tree.traverse():
+            node.sig_expansions = 0
+            node.sig_contractions = 0
         return
 
     def parse_lambdas(self, line):
@@ -232,10 +256,16 @@ class CAFE_fig():
             can access class attributes (graphics options).
             '''
             if not node.is_root():
+                if self.count_all_expansions:
+                    n_exp = node.expansion
+                    n_con = node.decrease
+                else:
+                    n_exp = node.sig_expansions
+                    n_con = node.sig_expansions
                 # add a text that shows expansions & contractions, e.g. +10/-20
                 exp_cnt_txt = ete3.TextFace(
-                    '+{}/-{}\n'.format(int(node.expansion), int(node.decrease)),
-                    fsize=6, fgcolor=self.lambda_colors[node.lambda_group]
+                    '+{} -{}\n'.format(int(n_exp), int(n_con)), fsize=6,
+                    fgcolor=self.lambda_colors[node.lambda_group]
                 )
                 pos = 'aligned' if node.is_leaf() else 'float'
                 # add a circle that shows the average expansion
@@ -396,13 +426,14 @@ class Family():
             else:
                 node.fam_size = int(size_tree_node.support)
             self.fam_sizes.append(node.fam_size)
+            node.event = None
         # parse family pvalues:
         node_pvalues = re.findall(r'[\d\.]+|-', self.branch_pvalue_str)
         for node_id, node_size in zip(self.c.cafe_node_id_order, node_pvalues):
             nodes = self.tree.search_nodes(id=node_id)
             assert len(nodes) == 1
             node = nodes[0]
-            if node_size == '-':
+            if node_size == '-' or self.pvalue > self.c.family_p_cutoff:
                 node.pvalue = None
             else:
                 node.pvalue = float(node_size)
@@ -411,14 +442,12 @@ class Family():
                         node.event = '+'
                     elif node.fam_size < node.up.fam_size:
                         node.event = '-'
-                    #else:
-                        #raise Exception('significant p-value, but no fam size change?')
         return
 
 
-def main(report_cafe, families, clades, pb, pf, dump, gfx_output_format):
+def main(report_cafe, families, clades, pb, pf, dump, gfx_output_format, count_all_expansions):
     # parse initial information (phylogeny and CAFE output formats)
-    c = CAFE_fig(report_cafe, families, clades, pb, pf, dump, gfx_output_format)
+    c = CAFE_fig(report_cafe, families, clades, pb, pf, dump, gfx_output_format, count_all_expansions)
 
     # show a tree that shows how many total expansions/contractions
     # occured at each node
@@ -469,6 +498,10 @@ if __name__ == '__main__':
     parser.add_argument('-g', '--gfx_output_format', default='.pdf', help='output '
                         'format for the tree figures when using --dump [svg|pdf|png]'
                         ' (default: pdf)')
+    parser.add_argument('--count_all_expansions', action='store_true', help='count '
+                        'and write down the number of *all* expansions and contrac'
+                        'tions (default: only count significant expansions/contrac'
+                        'tions)')
     args = parser.parse_args()
     if args.families:
         if args.clades:
