@@ -24,7 +24,7 @@ Install ETE3 with
 
 `pip3 install 'ete3==3.0.0b35'`
 
-It's important that you use ETE3 version 3.0.0b35 since it appears that the latest ETE3 version causes problems that are bejond my control (see issue [#1](https://github.com/LKremer/CAFE_fig/issues/1)).
+It's important that you use ETE3 version 3.0.0b35 since it appears that the latest ETE3 version causes problems that are beyond my control (see issue [#1](https://github.com/LKremer/CAFE_fig/issues/1)).
 
 
 Usage
@@ -33,13 +33,13 @@ Usage
 ```
 usage: CAFE_fig.py [-h] [-f FAMILIES [FAMILIES ...]] [-c CLADES [CLADES ...]]
                    [-pb PB] [-pf PF] [-d DUMP] [-g GFX_OUTPUT_FORMAT]
+                   [--count_all_expansions]
                    report_cafe
 
 Parses a CAFE output file (.cafe) and plots a summary tree that shows the
-average expansion/contraction across the phylogeny, the numbers of expanded/
-contracted families, and the estimated lambda rates (rate of gene gain/loss).
-Can also plot a separate, detailed tree that shows the evolution of a single gene
-family's size for each user-specified gene family.
+average expansion/contraction across the phylogeny; a tree that shows which
+clades evolved under the same lambda (if available); and a gene family
+evolution tree for each user-specified gene family.
 
 positional arguments:
   report_cafe           the file report.cafe (or similar name)
@@ -60,16 +60,11 @@ optional arguments:
   -g GFX_OUTPUT_FORMAT, --gfx_output_format GFX_OUTPUT_FORMAT
                         output format for the tree figures when using --dump
                         [svg|pdf|png] (default: pdf)
+  --count_all_expansions
+                        count and write down the number of *all* expansions
+                        and contractions (default: only count significant
+                        expansions/contractions)
 ```
-
-Example usage
-------------
-
-`./CAFE_fig.py example_result.cafe -c Isoptera=zne,mna -a 0.05 --dump test/ -g .pdf`
-
-Reads "example_result.cafe" and dumps all figures in PDF format to the directory "test/". Trees will only be shown for families that showed a significant (p<=0.05) expansion/contraction at the node "Isoptera", which is the last common ancestor of "zne" and "mna".
-
-Significant contractions are marked in magenta, significant expansions are marked in green (p<=0.001 = \*\*\*, p<=0.01 = \*\*, p<=0.05 = \*).
 
 
 Example outputs
@@ -83,3 +78,15 @@ rates (blue: low rate; red: high rate).
 Example output for a specific gene family. Numbers and node sizes represent the family size at each node.
 Significant expansions are shown in green, significant contractions in magenta.
 ![example_tree](screenshots/Ir_group_B.png)
+
+
+Example usage
+------------
+
+To recreate the plots shown above, use this command:
+
+`python3 ./CAFE_fig.py example_result.cafe -c Isoptera=zne,mna -pb 0.05 -pf 0.05 --dump test/ -g .pdf --count_all_expansions`
+
+This reads "example_result.cafe" and dumps all figures in PDF format to the directory "test/". The summary tree ("summary.pdf") will show the whole phylogeny and the number of expansions and contractions (including insignificant ones!) as shown below. Further family-wise trees will be created and dumped in the directory "test/families". These trees will only be created for families that showed a significant (p<=0.05) expansion/contraction at the node "Isoptera", which is the last common ancestor of "zne" and "mna".
+
+Significant contractions are marked in magenta, significant expansions are marked in green (p<=0.001 = \*\*\*, p<=0.01 = \*\*, p<=0.05 = \*).
