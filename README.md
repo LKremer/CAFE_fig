@@ -24,7 +24,7 @@ Install ETE3 with
 
 `pip3 install 'ete3==3.0.0b35'`
 
-It's important that you use ETE3 version 3.0.0b35 since it appears that the latest ETE3 version causes problems that are beyond my control (see issue [#1](https://github.com/LKremer/CAFE_fig/issues/1)).
+It's important that you use ETE3 version 3.0.0b35 since it appears that the latest ETE3 version causes problems that are beyond my control (see issue [#1](https://github.com/LKremer/CAFE_fig/issues/1)). This ETE3 version runs well with PyQt4 but not PyQt5, so if you're experiencing issues it's worth a try to switch to PyQt4. 
 
 
 Usage
