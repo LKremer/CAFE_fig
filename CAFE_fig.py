@@ -146,11 +146,11 @@ class CAFE_fig():
                     self.cafe_node_id_order = [int(i) for i in re.findall(r'\d+', line)]
                 if line.startswith('Average Expansion'):
                     self.parse_fam_size_summary_tree(line, 'avg_expansion')
-                if line.startswith('Expansion'):
+                if line.startswith('Expansion') or line.startswith('nExpansion'):
                     self.parse_fam_size_summary_tree(line, 'expansion')
-                if line.startswith('Remain'):
+                if line.startswith('Remain') or line.startswith('nRemain'):
                     self.parse_fam_size_summary_tree(line, 'remain')
-                if line.startswith('Decrease'):
+                if line.startswith('Decrease') or line.startswith('nDecrease'):
                     self.parse_fam_size_summary_tree(line, 'decrease')
                 if line.startswith('\'ID\''):
                     break  # end of header lines
@@ -262,10 +262,16 @@ class CAFE_fig():
                 else:
                     n_exp = node.sig_expansions
                     n_con = node.sig_expansions
+
+                if hasattr(self, 'lambda_colors'):
+                    circle_color = self.lambda_colors[node.lambda_group]
+                else:
+                    circle_color = "blue"
+
                 # add a text that shows expansions & contractions, e.g. +10/-20
                 exp_cnt_txt = ete3.TextFace(
                     '+{} -{}\n'.format(int(n_exp), int(n_con)), fsize=6,
-                    fgcolor=self.lambda_colors[node.lambda_group]
+                    fgcolor=circle_color
                 )
                 pos = 'aligned' if node.is_leaf() else 'float'
                 # add a circle that shows the average expansion
@@ -275,7 +281,7 @@ class CAFE_fig():
                 scale_factor = 1 + node.avg_expansion
                 avg_exp = '{:+}'.format(round(node.avg_expansion, 2))
                 circle = ete3.CircleFace(radius=9 * scale_factor,
-                                         color=self.lambda_colors[node.lambda_group],
+                                         color=circle_color,
                                          label={'text': avg_exp, 'color': 'white',
                                                 'fontsize': 3 + (2.25*scale_factor)})
                 circle.opacity = self.graphics_options['opacity']
@@ -286,9 +292,11 @@ class CAFE_fig():
             return
         t = self.tree
         ts = ete3.TreeStyle()
-        header = ('Family expansions and contractions\nmin lambda: {} '
-                  '(blue)\nmax lambda: {} (red)').format(
-                 min(self.lambdas.values()), max(self.lambdas.values()))
+        header = 'Family expansions and contractions'
+        if hasattr(self, "lambdas"):
+            header += ('\nmin lambda: {} '
+                       '(blue)\nmax lambda: {} (red)').format(
+                        min(self.lambdas.values()), max(self.lambdas.values()))
         ts.title.add_face(ete3.TextFace(header, fsize=8), column=0)
         ts.scale = self.graphics_options['pixels_per_mya']  # pixels per million years
         ts.layout_fn = fam_size_piechart_layout
