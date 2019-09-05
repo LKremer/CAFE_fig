@@ -59,11 +59,14 @@ def get_pvalue_asterisks(node):
         return ''
 
 def to_rgb(v_abs, min_v, max_v):
-    v = (v_abs - min_v) / (max_v - min_v)  # scaled to a value between 0 and 1
-    red = round(255 * v)
-    blue = round(255 * (1 - v))
-    rgb_triplet = (red, 0, blue)
-    hex_color = '#' + b16encode(bytes(rgb_triplet)).decode()
+    if min_v == max_v:
+        hex_color = "#A9A9A9"
+    else:
+        v = (v_abs - min_v) / (max_v - min_v)  # scaled to a value between 0 and 1
+        red = round(255 * v)
+        blue = round(255 * (1 - v))
+        rgb_triplet = (red, 0, blue)
+        hex_color = '#' + b16encode(bytes(rgb_triplet)).decode()
     return hex_color
 
 
