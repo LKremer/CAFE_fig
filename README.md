@@ -90,3 +90,9 @@ To recreate the plots shown above, use this command:
 This reads "example_result.cafe" and dumps all figures in PDF format to the directory "test/". The summary tree ("summary.pdf") will show the whole phylogeny and the number of expansions and contractions (including insignificant ones!) as shown below. Further family-wise trees will be created and dumped in the directory "test/families". These trees will only be created for families that showed a significant (p<=0.05) expansion/contraction at the node "Isoptera", which is the last common ancestor of "zne" and "mna".
 
 Significant contractions are marked in magenta, significant expansions are marked in green (p<=0.001 = \*\*\*, p<=0.01 = \*\*, p<=0.05 = \*).
+
+Known issues
+------------
+
+The error message `module 'ete3' has no attribute 'TreeStyle'` is caused by a known problem with ete3 that is beyond my control.
+[Check this link for possible solutions!](https://github.com/etetoolkit/ete/issues/354). 
